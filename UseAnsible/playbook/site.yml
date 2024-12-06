@@ -1,0 +1,124 @@
+---
+- name: Install Clickhouse
+  hosts: clickhouse-01
+  handlers:
+    - name: Start clickhouse service
+      become: true
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: restarted
+  tasks:
+    - block:
+        - name: Get Сlickhouse distrib client
+          ansible.builtin.get_url:
+            url: "https://packages.clickhouse.com/rpm/stable/clickhouse-client-{{ clickhouse_version }}.x86_64.rpm"
+            dest: "./{{ item }}-{{ clickhouse_version }}.rpm"
+        - name: Get clickhouse distrib server
+          ansible.builtin.get_url:
+            url: "https://packages.clickhouse.com/rpm/stable/clickhouse-server-{{ clickhouse_version }}.x86_64.rpm"
+            dest: "./clickhouse-server-{{ clickhouse_version }}.rpm"
+      rescue:
+        - name: Get clickhouse distrib commom-static
+          ansible.builtin.get_url:
+            url: "https://packages.clickhouse.com/rpm/stable/clickhouse-common-static-{{ clickhouse_version }}.x86_64.rpm"
+            dest: "./clickhouse-common-static-{{ clickhouse_version }}.rpm"
+    - name: Install clickhouse packages
+      become: true
+      ansible.builtin.yum:
+        name:
+          - ./clickhouse-common-static-{{ clickhouse_version }}.rpm
+          - ./clickhouse-client-{{ clickhouse_version }}.rpm
+          - ./clickhouse-server-{{ clickhouse_version }}.rpm
+      notify: Start clickhouse service
+    - name: Flush handlers
+      meta: flush_handlers
+    - name: Create database
+      ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
+      register: create_db
+      failed_when: create_db.rc != 0 and create_db.rc !=82
+      changed_when: create_db.rc == 0
+
+- name: Install Vector
+  hosts: vector-01
+  
+  pre_tasks:
+    - name: Create Vector dir
+      become: true
+      file:
+        path: /etc/vector
+        state: directory
+        mode: '0666'
+    - name: Get Vector tar
+      get_url:
+        url: "https://packages.timber.io/vector/0.42.0/vector-0.42.0-x86_64-unknown-linux-musl.tar.gz"
+        dest: "/home/centos/vector-0.42.0-x86_64-unknown-linux-musl.tar.gz"
+    
+  
+    - name: Unarchive vector
+      become: true
+      unarchive:
+        src: /home/centos/vector-0.42.0-x86_64-unknown-linux-musl.tar.gz
+        dest: /etc/vector
+        mode: '0666'
+        remote_src: yes
+
+  tasks:
+     
+    - name: Temp file
+      become: true
+      template:
+        src: vector.yaml.j2
+        dest: /etc/vector/vector.yaml
+        mode: '0644'
+      notify:
+        - Restart Vector
+   
+  handlers: 
+    - name: Restart Vector
+      become: true
+      ansible.builtin.shell: /etc/vector/vector-x86_64-unknown-linux-musl/bin/vector --config /etc/vector/vector.yaml &
+
+- name: Install lighthouse
+  hosts: lighthouse-01
+  
+  pre_tasks:
+    - name: Install nginx
+      become: true
+      yum:
+        name: nginx
+    - name: Install unzip
+      become: true
+      yum:
+        name: unzip
+
+    - name: Get lighthouse
+      get_url:
+        url: "https://github.com/VKCOM/lighthouse/archive/refs/heads/master.zip"
+        dest: lighthouse.zip
+        mode: '0644'
+
+
+
+  tasks:
+    - name: Unarchive lighthouse
+      become: true
+      unarchive:
+        src: lighthouse.zip
+        dest: /usr/share/nginx/
+        remote_src: yes
+
+    - name: Temp file nginx
+      become: true
+      template:
+        src: nginx.conf.yml
+        dest: /etc/nginx/nginx.conf
+        mode: '0644'
+      notify:
+        - nginx start
+      
+  handlers:
+    - name: nginx start
+      become: true
+      service:
+        name: nginx
+        state: restarted
