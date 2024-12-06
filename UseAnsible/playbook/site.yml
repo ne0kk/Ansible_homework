@@ -70,6 +70,7 @@
         src: vector.yaml.j2
         dest: /etc/vector/vector.yaml
         mode: '0644'
+        
       notify:
         - Restart Vector
    
