@@ -1,0 +1,27 @@
+---
+- name: Install Clickhouse
+  hosts: clickhouse-01
+  roles: 
+      - clickhouse
+
+- name: Install Vector
+  hosts: vector-01
+  roles: 
+      - vector-role
+  
+   
+  
+- name: Install lighthouse
+  hosts: lighthouse-01
+  roles: 
+      - lighthouse-role
+  tasks:
+  - name: Temp file nginx
+    become: true
+    template:
+      src: nginx.conf.yml
+      dest: /etc/nginx/nginx.conf
+      mode: '0644'
+    notify:
+      - nginx start
+  
