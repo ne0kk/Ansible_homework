@@ -1,6 +1,6 @@
 ---
 - name: Install Clickhouse
-  hosts: clickhouse
+  hosts: clickhouse-01
   handlers:
     - name: Start clickhouse service
       become: true
@@ -23,7 +23,7 @@
       become: true
       ansible.builtin.yum:
         name:
-          - clickhouse-common-static-{{ clickhouse_version }}.rpm
+
           - clickhouse-client-{{ clickhouse_version }}.rpm
           - clickhouse-server-{{ clickhouse_version }}.rpm
       notify: Start clickhouse service
@@ -34,3 +34,44 @@
       register: create_db
       failed_when: create_db.rc != 0 and create_db.rc !=82
       changed_when: create_db.rc == 0
+
+- name: Install Vector
+  hosts: vector-01
+  
+  pre_tasks:
+    - name: Create Vector dir
+      become: true
+      file:
+        path: /etc/vector
+        state: directory
+    - name: Get Vector tar
+      get_url:
+        url: "https://packages.timber.io/vector/0.42.0/vector-0.42.0-x86_64-unknown-linux-musl.tar.gz"
+        dest: "/home/centos/vector-0.42.0-x86_64-unknown-linux-musl.tar.gz"
+    
+  
+    - name: Unarchive vector
+      unarchive:
+        src: /home/centos/vector-0.42.0-x86_64-unknown-linux-musl.tar.gz
+        dest: /etc/vector
+        remote_src: yes
+
+  tasks:
+     
+    - name: Temp file
+      become: true
+      template:
+        src: vector.yaml.j2
+        dest: /etc/vector/vector.yaml
+      notify:
+        - Restart Vector
+    - name: Run Vector
+      become: true
+      ansible.builtin.shell: /etc/vector/vector-x86_64-unknown-linux-musl/bin/vector --config /etc/vector/vector.yaml &
+       
+  handlers: 
+    - name: Restart Vector
+      become: true
+      ansible.builtin.shell: /etc/vector/vector-x86_64-unknown-linux-musl/bin/vector --config /etc/vector/vector.yaml &
+
+     
